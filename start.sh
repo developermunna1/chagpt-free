@@ -3,28 +3,15 @@
 # Force unbuffered output
 export PYTHONUNBUFFERED=1
 
-# Initialize database
+echo "Initializing database..."
 python database.py
 
-# Start User Bot
 echo "Starting User Bot..."
-python -u user_bot.py &
-USER_BOT_PID=$!
+python user_bot.py &
 
-# Start Admin Bot
 echo "Starting Admin Bot..."
-python -u admin_bot.py &
-ADMIN_BOT_PID=$!
+python admin_bot.py &
 
-# Start Flask App
-echo "Starting Web App..."
-gunicorn app:app --bind 0.0.0.0:$PORT &
-WEB_APP_PID=$!
-
-# Wait for any process to exit
-wait -n
-
-# Get exit code
-EXIT_CODE=$?
-echo "A process exited with code $EXIT_CODE. Shutting down..."
-exit $EXIT_CODE
+echo "Starting Web App on 0.0.0.0:$PORT..."
+# Run Gunicorn in foreground. If this exits, the container exits/restarts.
+gunicorn app:app --bind 0.0.0.0:$PORT --log-level info
