@@ -89,7 +89,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
     text = (
-        f"👋 **Hello, {first_name}!**\n\n"
+        f"👋 **Hello, {first_name}!** (v2.0)\n\n"
         "Welcome to your **Premium Dashboard**.\n"
         "Earn credits by referring friends or add funds to buy services!"
     )

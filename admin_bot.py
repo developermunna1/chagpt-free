@@ -36,7 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=user_id,
         text=(
-            "👑 **Admin Dashboard** 👑\n\n"
+            "👑 **Admin Dashboard v2.0** 👑\n\n"
             "Welcome to your control panel.\n"
             "Select an action below:"
         ),
