@@ -41,6 +41,16 @@ def init_db():
             invite_link TEXT NOT NULL
         )
     ''')
+
+    # Create users table for broadcasting
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
     conn.commit()
     conn.close()

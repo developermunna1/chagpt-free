@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, filters, MessageHandler
 from config import ADMIN_BOT_TOKEN, ADMIN_ID
@@ -180,6 +181,46 @@ async def del_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error deleting channel.")
 
 # Fallback for list commands if user types them manually, redirect to text response
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return
+
+    # Check if message is a reply or has args
+    msg = None
+    if update.message.reply_to_message:
+        msg = update.message.reply_to_message
+    else:
+        args = context.args
+        if not args:
+            await update.message.reply_text("Usage:\n1. Reply to a message with /broadcast\n2. Or type /broadcast <message>")
+            return
+        msg = " ".join(args)
+
+    conn = get_db_connection()
+    users = conn.execute('SELECT user_id FROM users').fetchall()
+    conn.close()
+
+    total = len(users)
+    sent = 0
+    failed = 0
+
+    status_msg = await update.message.reply_text(f"📢 Starting broadcast to {total} users...")
+
+    for user in users:
+        try:
+            if isinstance(msg, str):
+                await context.bot.send_message(chat_id=user['user_id'], text=msg)
+            else:
+                await msg.copy(chat_id=user['user_id'])
+            sent += 1
+        except Exception:
+            failed += 1
+        
+        # Avoid flood limits
+        if sent % 20 == 0:
+            await asyncio.sleep(1)
+
+    await status_msg.edit_text(f"✅ Broadcast Complete!\n\nSent: {sent}\nFailed: {failed}")
+
 async def list_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Reuse button logic or just simple text
     await update.message.reply_text("Please use the dashboard buttons.")
@@ -197,6 +238,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('add_service', add_service))
     application.add_handler(CommandHandler('add_channel', add_channel))
     application.add_handler(CommandHandler('del_channel', del_channel))
+    application.add_handler(CommandHandler('broadcast', broadcast))
     
     print("Admin Bot Running...")
     application.run_polling()

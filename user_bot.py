@@ -51,10 +51,26 @@ async def show_join_channels(update, context, missing_channels):
     else:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=msg, reply_markup=reply_markup, parse_mode='Markdown')
 
+async def register_user(user_id, username, first_name):
+    conn = get_db_connection()
+    try:
+        conn.execute('INSERT OR IGNORE INTO users (user_id, username, first_name) VALUES (?, ?, ?)', 
+                     (user_id, username, first_name))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error registering user: {e}")
+    finally:
+        conn.close()
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    username = update.effective_user.username
+    first_name = update.effective_user.first_name
+
+    # Register user for broadcasts
+    await register_user(user_id, username, first_name)
     
-    # Check membership
+    # Check membership BEFORE showing content
     try:
         missing = await check_membership(user_id, context)
         if missing:
