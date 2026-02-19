@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: service-buying-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: ./start.sh
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: PYTHON_VERSION
+        value: 3.11.5

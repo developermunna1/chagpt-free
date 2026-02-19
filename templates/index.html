@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIP Services</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💎 Exclusive VIP Services 💎</h1>
+            <p>Select a premium service to boost your experience</p>
+        </header>
+        
+        <div class="services-grid">
+            {% for service in services %}
+            <div class="service-card" onclick="buyService({{ service['id'] }}, '{{ service['name'] }}', {{ service['price'] }})">
+                <div class="card-content">
+                    <h3>{{ service['name'] }}</h3>
+                    <p class="description">{{ service['description'] }}</p>
+                    <div class="price-tag">${{ service['price'] }}</div>
+                </div>
+                <div class="card-overlay"></div>
+            </div>
+            {% else %}
+            <p class="no-services">No VIP services currently available. Check back soon.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="confirmationModal" class="modal">
+        <div class="modal-content">
+            <h2>Confirm Purchase</h2>
+            <p id="modalText"></p>
+            <div class="modal-buttons">
+                <button class="btn btn-cancel" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-confirm" onclick="confirmPurchase()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        let selectedServiceId = null;
+
+        function buyService(id, name, price) {
+            selectedServiceId = id;
+            document.getElementById('modalText').innerText = `Purchase ${name} for $${price}?`;
+            document.getElementById('confirmationModal').style.display = "flex";
+        }
+
+        function closeModal() {
+            document.getElementById('confirmationModal').style.display = "none";
+            selectedServiceId = null;
+        }
+
+        function confirmPurchase() {
+            if (!selectedServiceId) return;
+
+            const userId = tg.initDataUnsafe?.user?.id || 12345; // Fallback for debugging
+
+            fetch('/buy', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    service_id: selectedServiceId,
+                    user_id: userId
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    tg.showAlert("✅ Order Placed Successfully!");
+                    tg.close();
+                } else {
+                    tg.showAlert("❌ Error: " + data.message);
+                }
+                closeModal();
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                tg.showAlert("❌ An unexpected error occurred.");
+                closeModal();
+            });
+        }
+    </script>
+</body>
+</html>
