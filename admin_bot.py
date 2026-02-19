@@ -16,7 +16,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="👑 Admin Panel 👑\n\nCommands:\n/add_service <name> <price> <desc>\n/orders - View recent orders"
+        text=(
+            "👑 Admin Panel 👑\n\n"
+            "**Service Management:**\n"
+            "/add_service <name> <price> <desc>\n"
+            "/orders - View recent orders\n\n"
+            "**Channel Verification:**\n"
+            "/add_channel <id> <link> - Add required channel\n"
+            "/del_channel <id> - Remove channel\n"
+            "/channels - List all channels"
+        ),
+        parse_mode='Markdown'
     )
 
 async def add_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -69,6 +79,86 @@ async def list_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(message)
 
+async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != int(ADMIN_ID):
+        return
+
+    try:
+        # Expected format: /add_channel -100123456789 https://t.me/+AbCdEfGh
+        args = context.args
+        if len(args) < 2:
+            await update.message.reply_text("Usage: /add_channel <chat_id> <invite_link>")
+            return
+
+        chat_id = args[0]
+        # Joining the rest as link in case it has spaces (though unlikely for links)
+        invite_link = args[1]
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        # Check if exists
+        curr = c.execute('SELECT * FROM channels WHERE chat_id = ?', (chat_id,)).fetchone()
+        if curr:
+            await update.message.reply_text("⚠️ Channel already exists.")
+            conn.close()
+            return
+
+        c.execute('INSERT INTO channels (chat_id, invite_link) VALUES (?, ?)', (chat_id, invite_link))
+        conn.commit()
+        conn.close()
+
+        await update.message.reply_text(f"✅ Channel {chat_id} added successfully!")
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        await update.message.reply_text("❌ An error occurred.")
+
+async def del_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != int(ADMIN_ID):
+        return
+
+    try:
+        args = context.args
+        if len(args) < 1:
+            await update.message.reply_text("Usage: /del_channel <chat_id>")
+            return
+
+        chat_id = args[0]
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('DELETE FROM channels WHERE chat_id = ?', (chat_id,))
+        rows = c.rowcount
+        conn.commit()
+        conn.close()
+
+        if rows > 0:
+            await update.message.reply_text(f"✅ Channel {chat_id} removed.")
+        else:
+            await update.message.reply_text(f"⚠️ Channel {chat_id} not found.")
+
+    except Exception as e:
+        await update.message.reply_text("❌ An error occurred.")
+
+async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != int(ADMIN_ID):
+        return
+
+    conn = get_db_connection()
+    channels = conn.execute('SELECT * FROM channels').fetchall()
+    conn.close()
+
+    if not channels:
+        await update.message.reply_text("📭 No channels configured.")
+        return
+
+    msg = "📢 **Required Channels:**\n\n"
+    for ch in channels:
+        msg += f"ID: `{ch['chat_id']}`\nLink: {ch['invite_link']}\n\n"
+    
+    await update.message.reply_text(msg, parse_mode='Markdown')
+
 if __name__ == '__main__':
     application = ApplicationBuilder().token(ADMIN_BOT_TOKEN).build()
     
@@ -76,9 +166,18 @@ if __name__ == '__main__':
     add_service_handler = CommandHandler('add_service', add_service)
     orders_handler = CommandHandler('orders', list_orders)
     
+    # Channel handlers
+    add_channel_handler = CommandHandler('add_channel', add_channel)
+    del_channel_handler = CommandHandler('del_channel', del_channel)
+    list_channels_handler = CommandHandler('channels', list_channels)
+
     application.add_handler(start_handler)
     application.add_handler(add_service_handler)
     application.add_handler(orders_handler)
+    
+    application.add_handler(add_channel_handler)
+    application.add_handler(del_channel_handler)
+    application.add_handler(list_channels_handler)
     
     print("Admin Bot is running...")
     application.run_polling()

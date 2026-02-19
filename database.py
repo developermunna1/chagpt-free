@@ -31,6 +31,15 @@ def init_db():
             FOREIGN KEY (service_id) REFERENCES services (id)
         )
     ''')
+
+    # Create channels table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT NOT NULL,
+            invite_link TEXT NOT NULL
+        )
+    ''')
     
     conn.commit()
     conn.close()
