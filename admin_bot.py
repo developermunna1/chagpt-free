@@ -10,27 +10,40 @@ logging.basicConfig(
 )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != int(ADMIN_ID):
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="⛔ Access Denied.")
+    user_id = update.effective_user.id
+    
+    # Check for ADMIN_ID validity
+    if not ADMIN_ID:
+        await context.bot.send_message(chat_id=user_id, text="⚠️ Critical Error: ADMIN_ID not configured in settings.")
+        return
+
+    try:
+        admin_id_int = int(ADMIN_ID)
+    except (ValueError, TypeError):
+        await context.bot.send_message(chat_id=user_id, text="⚠️ Critical Error: ADMIN_ID in settings is not a number.")
+        return
+
+    if user_id != admin_id_int:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="⛔ Access Denied. You are not the admin.")
         return
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=(
-            "👑 Admin Panel 👑\n\n"
+            "👑 **Admin Panel** 👑\n\n"
             "**Service Management:**\n"
-            "/add_service <name> <price> <desc>\n"
+            "/add_service `<name>` `<price>` `<desc>`\n"
             "/orders - View recent orders\n\n"
             "**Channel Verification:**\n"
-            "/add_channel <id> <link> - Add required channel\n"
-            "/del_channel <id> - Remove channel\n"
+            "/add_channel `<id>` `<link>` - Add required channel\n"
+            "/del_channel `<id>` - Remove channel\n"
             "/channels - List all channels"
         ),
         parse_mode='Markdown'
     )
 
 async def add_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != int(ADMIN_ID):
+    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
         return
 
     try:
@@ -60,7 +73,7 @@ async def add_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An error occurred.")
 
 async def list_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != int(ADMIN_ID):
+    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
         return
 
     conn = get_db_connection()
@@ -80,7 +93,7 @@ async def list_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message)
 
 async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != int(ADMIN_ID):
+    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
         return
 
     try:
@@ -115,7 +128,7 @@ async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An error occurred.")
 
 async def del_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != int(ADMIN_ID):
+    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
         return
 
     try:
@@ -142,7 +155,7 @@ async def del_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An error occurred.")
 
 async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != int(ADMIN_ID):
+    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
         return
 
     conn = get_db_connection()
@@ -160,6 +173,11 @@ async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='Markdown')
 
 if __name__ == '__main__':
+    # Main.py handles the real execution, this is for local testing fallback
+    if not ADMIN_BOT_TOKEN:
+        print("Error: ADMIN_BOT_TOKEN not set.")
+        exit(1)
+        
     application = ApplicationBuilder().token(ADMIN_BOT_TOKEN).build()
     
     start_handler = CommandHandler('start', start)
