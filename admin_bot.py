@@ -30,16 +30,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=(
-            "👑 **Admin Panel** 👑\n\n"
-            "**Service Management:**\n"
-            "/add_service `<name>` `<price>` `<desc>`\n"
+            "👑 Admin Panel 👑\n\n"
+            "Service Management:\n"
+            "/add_service <name> <price> <desc>\n"
             "/orders - View recent orders\n\n"
-            "**Channel Verification:**\n"
-            "/add_channel `<id>` `<link>` - Add required channel\n"
-            "/del_channel `<id>` - Remove channel\n"
+            "Channel Verification:\n"
+            "/add_channel <id> <link> - Add required channel\n"
+            "/del_channel <id> - Remove channel\n"
             "/channels - List all channels"
-        ),
-        parse_mode='Markdown'
+        )
+        # Removed parse_mode to avoid Markdown errors
     )
 
 async def add_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
