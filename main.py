@@ -63,9 +63,14 @@ async def main():
 
 if __name__ == '__main__':
     try:
+        # Check tokens
+        if not USER_BOT_TOKEN or not ADMIN_BOT_TOKEN:
+            logger.critical("❌ TOKENS MISSING! Check Environment Variables.")
+            exit(1)
+            
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
+        logger.critical(f"❌ FATAL ERROR IN MAIN LOOP: {e}", exc_info=True)
         traceback.print_exc()
