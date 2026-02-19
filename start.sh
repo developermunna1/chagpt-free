@@ -3,6 +3,9 @@
 # Force unbuffered output
 export PYTHONUNBUFFERED=1
 
+echo "Initializing Database..."
+python -c "from database import init_db; init_db()"
+
 echo "Starting Bots (User & Admin)..."
 python main.py &
 
