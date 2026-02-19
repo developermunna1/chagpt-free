@@ -151,18 +151,76 @@ async def add_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id): return
     args = context.args
-    if len(args) < 2:
-        await update.message.reply_text("Usage: /add_channel <id> <link>")
+    
+    # Check if user sent arguments
+    if not args:
+        await update.message.reply_text(
+            "📝 **How to Add a Channel:**\n\n"
+            "Simply send:\n`/add_channel https://t.me/your_channel`\n"
+            "OR\n`/add_channel @your_channel`\n\n"
+            "⚠️ The bot MUST be an **Admin** in that channel!",
+            parse_mode='Markdown'
+        )
         return
+
+    user_input = args[0]
+    chat_id = None
+    invite_link = user_input
+
     try:
-        chat_id, link = args[0], args[1]
+        # Try to resolve username/link from input
+        username = None
+        if "t.me/" in user_input:
+            # Extract username from link (e.g., https://t.me/username)
+            parts = user_input.split('/')
+            if parts[-1].startswith('+'):
+                # Private invite link, cannot resolve ID easily without being in it
+                await update.message.reply_text("⚠️ Private links (starting with +) usage:\n`/add_channel <id> <link>`", parse_mode='Markdown')
+                return
+            username = f"@{parts[-1]}"
+        elif user_input.startswith("@"):
+            username = user_input
+        
+        # If we found a username, fetch the chat info
+        if username:
+            try:
+                chat = await context.bot.get_chat(username)
+                chat_id = chat.id
+                # Use the passed link or username as display
+                invite_link = user_input
+            except Exception as e:
+                await update.message.reply_text(f"❌ Could not find channel {username}.\nMake sure the bot is an **Admin** there or the username is correct.")
+                return
+        else:
+            # Maybe user provided ID first? (Old syntax support: ID Link)
+            if len(args) >= 2:
+                chat_id = args[0]
+                invite_link = args[1]
+            else:
+                await update.message.reply_text("❌ Invalid format. Please use a public link or @username.")
+                return
+
+        # Save to DB
         conn = get_db_connection()
-        conn.execute('INSERT INTO channels (chat_id, invite_link) VALUES (?, ?)', (chat_id, link))
-        conn.commit()
+        # Check if exists
+        curr = conn.execute('SELECT * FROM channels WHERE chat_id = ?', (str(chat_id),)).fetchone()
+        if curr:
+            await update.message.reply_text("⚠️ Channel already exists in list.")
+        else:
+            conn.execute('INSERT INTO channels (chat_id, invite_link) VALUES (?, ?)', (str(chat_id), invite_link))
+            conn.commit()
+            await update.message.reply_text(
+                f"✅ **Channel Added!**\n\n"
+                f"📌 Title: {chat.title if 'chat' in locals() else 'Unknown'}\n"
+                f"🆔 ID: `{chat_id}`\n"
+                f"🔗 Link: {invite_link}",
+                parse_mode='Markdown'
+            )
         conn.close()
-        await update.message.reply_text(f"✅ Channel {chat_id} added!")
-    except:
-        await update.message.reply_text("❌ Error adding channel.")
+
+    except Exception as e:
+        traceback.print_exc()
+        await update.message.reply_text("❌ Error processing request. Ensure Bot is Admin in that channel.")
 
 async def del_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id): return
