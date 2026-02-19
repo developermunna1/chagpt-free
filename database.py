@@ -42,15 +42,28 @@ def init_db():
         )
     ''')
 
-    # Create users table for broadcasting
+    # Create users table for broadcasting, balance, and referrals
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             first_name TEXT,
+            balance REAL DEFAULT 0.0,
+            referred_by INTEGER,
             joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Migrations
+    try:
+        c.execute('ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0.0')
+    except:
+        pass # Column likely exists
+    
+    try:
+        c.execute('ALTER TABLE users ADD COLUMN referred_by INTEGER')
+    except:
+        pass # Column likely exists
     
     conn.commit()
     conn.close()

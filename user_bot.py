@@ -1,10 +1,9 @@
 import logging
-from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
-from config import USER_BOT_TOKEN, WEB_APP_URL, ADMIN_ID
+from config import USER_BOT_TOKEN, ADMIN_ID
 from database import get_db_connection
 
-# Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -13,18 +12,25 @@ logging.basicConfig(
 async def post_init(application: ApplicationBuilder):
     try:
         if ADMIN_ID:
-            await application.bot.send_message(chat_id=ADMIN_ID, text="🚀 User Bot has launched with Web App UI!")
-    except Exception as e:
-        logging.error(f"Failed to send startup message: {e}")
+            await application.bot.send_message(chat_id=ADMIN_ID, text="🚀 User Bot launched with Referral System!")
+    except: pass
 
-async def register_user(user_id, username, first_name):
+async def register_user(user_id, username, first_name, referrer_id=None):
     conn = get_db_connection()
     try:
-        conn.execute('INSERT OR IGNORE INTO users (user_id, username, first_name) VALUES (?, ?, ?)', 
-                     (user_id, username, first_name))
-        conn.commit()
+        # Check if user exists
+        exists = conn.execute('SELECT 1 FROM users WHERE user_id = ?', (user_id,)).fetchone()
+        if not exists:
+            conn.execute('INSERT INTO users (user_id, username, first_name, referred_by) VALUES (?, ?, ?, ?)', 
+                         (user_id, username, first_name, referrer_id))
+            conn.commit()
+            
+            # Bonus logic for referrer could go here
+            if referrer_id:
+                # Notify referrer?
+                pass
     except Exception as e:
-        logging.error(f"Error registering user: {e}")
+        logging.error(f"Error registering: {e}")
     finally:
         conn.close()
 
@@ -32,8 +38,7 @@ async def check_membership(user_id, context):
     conn = get_db_connection()
     try:
         channels = conn.execute('SELECT * FROM channels').fetchall()
-    except Exception as e:
-        logging.error(f"Database error checking channels: {e}")
+    except:
         return []
     finally:
         conn.close()
@@ -44,89 +49,127 @@ async def check_membership(user_id, context):
             member = await context.bot.get_chat_member(chat_id=ch['chat_id'], user_id=user_id)
             if member.status in ['left', 'kicked', 'restricted']:
                 missing_channels.append(ch)
-        except Exception as e:
-            # Assume strict
+        except:
             missing_channels.append(ch)
-    
     return missing_channels
 
 async def show_join_channels(update, context, missing_channels):
     keyboard = []
     for ch in missing_channels:
-        btn_text = "📢 Join Channel"
-        keyboard.append([InlineKeyboardButton(btn_text, url=ch['invite_link'])])
-    
+        keyboard.append([InlineKeyboardButton("📢 Join Channel", url=ch['invite_link'])])
     keyboard.append([InlineKeyboardButton("✅ I Joined", callback_data="check_joined")])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    msg_text = "⛔ **Access Denied**\n\nYou must join our official channels to use this bot."
+    msg = "⛔ **Access Denied**\n\nPlease join our channels to control this bot."
     
     if update.callback_query:
-        await update.callback_query.edit_message_text(msg_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await update.callback_query.edit_message_text(msg, reply_markup=reply_markup, parse_mode='Markdown')
     else:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=msg_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=msg, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username
     first_name = update.effective_user.first_name
 
-    # Register user for broadcasts
-    await register_user(user_id, username, first_name)
+    # Handle Referral
+    args = context.args
+    referrer_id = None
+    if args and args[0].isdigit():
+        potential_referrer = int(args[0])
+        if potential_referrer != user_id:
+            referrer_id = potential_referrer
+
+    await register_user(user_id, username, first_name, referrer_id)
     
-    # Check membership BEFORE showing content
     try:
         missing = await check_membership(user_id, context)
         if missing:
             await show_join_channels(update, context, missing)
             return
-    except Exception as e:
-        logging.error(f"Membership check failed: {e}")
-        pass
+    except: pass
 
-    welcome_text = (
-        f"🌟 Welcome, {first_name}! 🌟\n\n"
-        "Unlock the VIP experience. Tap the button below to browse our exclusive services."
+    text = (
+        f"👋 **Hello, {first_name}!**\n\n"
+        "Welcome to your **Premium Dashboard**.\n"
+        "Earn credits by referring friends or add funds to buy services!"
     )
     
     keyboard = [
-        [InlineKeyboardButton("💎 Open VIP Store", web_app=WebAppInfo(url=WEB_APP_URL))]
+        [InlineKeyboardButton("👤 My Profile", callback_data="show_profile"),
+         InlineKeyboardButton("💰 Add Credits", callback_data="add_balance")],
+        [InlineKeyboardButton("🔗 Refer & Earn", callback_data="referral_info")],
+        [InlineKeyboardButton("🛍️ Services", callback_data="list_services")] # Keeping service list button
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=welcome_text,
-        reply_markup=reply_markup
-    )
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=text, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
     await query.answer()
-
+    
     if query.data == "check_joined":
-        user_id = query.from_user.id
         missing = await check_membership(user_id, context)
-        
         if missing:
-            await query.answer("❌ You haven't joined all channels yet!", show_alert=True)
+            await query.answer("❌ Join channels first!", show_alert=True)
         else:
             await query.message.delete()
-            # Recursively call start to show the menu
             await start(update, context)
 
-if __name__ == '__main__':
-    if not USER_BOT_TOKEN:
-        print("Error: USER_BOT_TOKEN not found in environment.")
-        exit(1)
-        
-    application = ApplicationBuilder().token(USER_BOT_TOKEN).post_init(post_init).build()
-    
-    start_handler = CommandHandler('start', start)
-    btn_handler = CallbackQueryHandler(btn_handler)
+    elif query.data == "back_to_menu":
+        await start(update, context)
 
-    application.add_handler(start_handler)
-    application.add_handler(btn_handler)
-    
-    print("User Bot is running...")
+    elif query.data == "show_profile":
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE user_id = ?', (user_id,)).fetchone()
+        conn.close()
+        balance = user['balance'] if user else 0.0
+        
+        text = (
+            f"👤 **My Profile**\n\n"
+            f"🆔 ID: `{user_id}`\n"
+            f"👤 Name: {query.from_user.full_name}\n"
+            f"💳 Credits: **{balance:.2f}**\n\n"
+        )
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_to_menu")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    elif query.data == "add_balance":
+        text = (
+            "💰 **Add Credits**\n\n"
+            "Contact Admin to buy credits:\n"
+            "👤 Admin: @YourAdminUsername\n\n"
+            "**Accepted:**\n"
+            "• Binance\n• Bkash\n• Nagad"
+        )
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_to_menu")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    elif query.data == "referral_info":
+        bot_username = context.bot.username
+        link = f"https://t.me/{bot_username}?start={user_id}"
+        
+        text = (
+            "🔗 **Refer & Earn**\n\n"
+            "Share your link and earn bonus credits!\n\n"
+            f"Your Link:\n`{link}`\n\n"
+            "Tap to copy!"
+        )
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_to_menu")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    elif query.data == "list_services":
+        # Placeholder for service listing
+        await query.answer("Service list coming in next update!", show_alert=True)
+
+if __name__ == '__main__':
+    if not USER_BOT_TOKEN: exit(1)
+    application = ApplicationBuilder().token(USER_BOT_TOKEN).post_init(post_init).build()
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CallbackQueryHandler(btn_handler))
+    print("User Bot Running...")
     application.run_polling()

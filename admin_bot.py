@@ -283,8 +283,19 @@ async def list_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Reuse button logic or just simple text
     await update.message.reply_text("Please use the dashboard buttons.")
 
-async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Please use the dashboard buttons.")
+async def get_channel_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return
+    
+    if update.message.forward_from_chat:
+        chat = update.message.forward_from_chat
+        await update.message.reply_text(
+            f"📢 **Channel Detected!**\n\n"
+            f"📌 Title: {chat.title}\n"
+            f"🆔 ID: `{chat.id}`\n\n"
+            f"Use this ID to add the channel:\n"
+            f"`/add_channel {chat.id} <invite_link>`",
+            parse_mode='Markdown'
+        )
 
 if __name__ == '__main__':
     if not ADMIN_BOT_TOKEN: exit(1)
@@ -297,6 +308,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('add_channel', add_channel))
     application.add_handler(CommandHandler('del_channel', del_channel))
     application.add_handler(CommandHandler('broadcast', broadcast))
+    
+    # Add handler for forwarded messages to get ID
+    application.add_handler(MessageHandler(filters.FORWARDED & filters.ChatType.PRIVATE, get_channel_id))
     
     print("Admin Bot Running...")
     application.run_polling()
