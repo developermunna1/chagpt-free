@@ -1,8 +1,23 @@
 import logging
 from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
-from config import USER_BOT_TOKEN, WEB_APP_URL
+from config import USER_BOT_TOKEN, WEB_APP_URL, ADMIN_ID
 from database import get_db_connection
+
+# ... (logging setup)
+
+async def post_init(application: ApplicationBuilder):
+    try:
+        await application.bot.send_message(chat_id=ADMIN_ID, text="🚀 User Bot has started and is running on Render!")
+    except Exception as e:
+        logging.error(f"Failed to send startup message: {e}")
+
+# ... (rest of the file)
+
+if __name__ == '__main__':
+    application = ApplicationBuilder().token(USER_BOT_TOKEN).post_init(post_init).build()
+    
+    start_handler = CommandHandler('start', start)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
