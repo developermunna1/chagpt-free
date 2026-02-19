@@ -1,201 +1,202 @@
 import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, filters, MessageHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, filters, MessageHandler
 from config import ADMIN_BOT_TOKEN, ADMIN_ID
 from database import get_db_connection
+import traceback
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
+# Helper to check admin
+def is_admin(user_id):
+    try:
+        return str(user_id) == str(ADMIN_ID)
+    except:
+        return False
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # Check for ADMIN_ID validity
-    if not ADMIN_ID:
-        await context.bot.send_message(chat_id=user_id, text="⚠️ Critical Error: ADMIN_ID not configured in settings.")
+    if not is_admin(user_id):
+        await context.bot.send_message(chat_id=user_id, text="⛔ Access Denied.")
         return
 
-    try:
-        admin_id_int = int(ADMIN_ID)
-    except (ValueError, TypeError):
-        await context.bot.send_message(chat_id=user_id, text="⚠️ Critical Error: ADMIN_ID in settings is not a number.")
-        return
-
-    if user_id != admin_id_int:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="⛔ Access Denied. You are not the admin.")
-        return
+    keyboard = [
+        [InlineKeyboardButton("🛍️ Services", callback_data='btn_services'),
+         InlineKeyboardButton("📦 Orders", callback_data='btn_orders')],
+        [InlineKeyboardButton("📢 Channels", callback_data='btn_channels')],
+        [InlineKeyboardButton("🔄 Refresh", callback_data='btn_refresh')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     await context.bot.send_message(
-        chat_id=update.effective_chat.id,
+        chat_id=user_id,
         text=(
-            "👑 Admin Panel 👑\n\n"
-            "Service Management:\n"
-            "/add_service <name> <price> <desc>\n"
-            "/orders - View recent orders\n\n"
-            "Channel Verification:\n"
-            "/add_channel <id> <link> - Add required channel\n"
-            "/del_channel <id> - Remove channel\n"
-            "/channels - List all channels"
-        )
-        # Removed parse_mode to avoid Markdown errors
+            "👑 **Admin Dashboard** 👑\n\n"
+            "Welcome to your control panel.\n"
+            "Select an action below:"
+        ),
+        reply_markup=reply_markup
     )
+    # Note: Removed markdown parse_mode to be safe, or we can use it if we are careful. 
+    # Let's keep it simple for now to avoid crash.
 
-async def add_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    
+    if not is_admin(user_id):
+        await query.answer("⛔ Access Denied", show_alert=True)
         return
 
-    try:
-        # Expected format: /add_service ServiceName 10.50 Description here
-        args = context.args
-        if len(args) < 3:
-            await update.message.reply_text("Usage: /add_service <name> <price> <description>")
-            return
+    await query.answer()
+    data = query.data
 
-        name = args[0]
-        price = float(args[1])
-        description = " ".join(args[2:])
+    back_btn = [InlineKeyboardButton("🔙 Back to Dashboard", callback_data='btn_refresh')]
 
+    if data == 'btn_refresh':
+        keyboard = [
+            [InlineKeyboardButton("🛍️ Services", callback_data='btn_services'),
+             InlineKeyboardButton("📦 Orders", callback_data='btn_orders')],
+            [InlineKeyboardButton("📢 Channels", callback_data='btn_channels')],
+            [InlineKeyboardButton("🔄 Refresh", callback_data='btn_refresh')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        try:
+            await query.edit_message_text(
+                text="👑 **Admin Dashboard** 👑\n\nWelcome to your control panel.\nSelect an action below:",
+                reply_markup=reply_markup
+            )
+        except:
+            pass # Message might be same
+
+    elif data == 'btn_services':
+        # List services
         conn = get_db_connection()
-        c = conn.cursor()
-        c.execute('INSERT INTO services (name, price, description) VALUES (?, ?, ?)', (name, price, description))
-        conn.commit()
+        services = conn.execute('SELECT * FROM services').fetchall()
         conn.close()
 
-        await update.message.reply_text(f"✅ Service '{name}' added successfully!")
+        text = "🛍️ **Manage Services**\n\n"
+        if not services:
+            text += "No services found.\n"
+        else:
+            for s in services:
+                text += f"• {s['name']} - ${s['price']}\n  ID: {s['id']}\n\n"
+        
+        text += "To add a service, send command:\n`/add_service Name Price Description`"
+        
+        keyboard = [back_btn]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
 
-    except ValueError:
-        await update.message.reply_text("❌ Error: Price must be a number.")
+    elif data == 'btn_orders':
+        conn = get_db_connection()
+        # Fetch last 5 orders
+        orders = conn.execute('SELECT * FROM orders ORDER BY timestamp DESC LIMIT 5').fetchall()
+        conn.close()
+
+        text = "📦 **Recent Orders**\n\n"
+        if not orders:
+            text += "No pending orders."
+        else:
+            for o in orders:
+                text += f"🆔 Order #{o['id']}\n👤 User: {o['user_id']}\n🛠 Svc ID: {o['service_id']}\nscStatus: {o['status']}\n\n"
+        
+        keyboard = [back_btn]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+
+    elif data == 'btn_channels':
+        conn = get_db_connection()
+        channels = conn.execute('SELECT * FROM channels').fetchall()
+        conn.close()
+
+        text = "📢 **Verification Channels**\n\n"
+        if not channels:
+            text += "No channels configured.\n"
+        else:
+            for ch in channels:
+                text += f"ID: {ch['chat_id']}\nLink: {ch['invite_link']}\n\n"
+        
+        text += (
+            "To ADD: `/add_channel <id> <link>`\n"
+            "To DEL: `/del_channel <id>`"
+        )
+        
+        keyboard = [back_btn]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+
+# Keep command handlers for adding data as they require arguments
+async def add_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return
+    args = context.args
+    if len(args) < 3:
+        await update.message.reply_text("Usage: /add_service <name> <price> <description>")
+        return
+    try:
+        name, price, description = args[0], float(args[1]), " ".join(args[2:])
+        conn = get_db_connection()
+        conn.execute('INSERT INTO services (name, price, description) VALUES (?, ?, ?)', (name, price, description))
+        conn.commit()
+        conn.close()
+        await update.message.reply_text(f"✅ Service '{name}' added!")
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        await update.message.reply_text("❌ An error occurred.")
-
-async def list_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
-        return
-
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('SELECT * FROM orders ORDER BY timestamp DESC LIMIT 10')
-    orders = c.fetchall()
-    conn.close()
-
-    if not orders:
-        await update.message.reply_text("📭 No orders found.")
-        return
-
-    message = "📦 **Recent Orders**:\n\n"
-    for order in orders:
-        message += f"ID: {order['id']} | User: {order['user_id']} | Service: {order['service_id']}\nStatus: {order['status']}\n\n"
-
-    await update.message.reply_text(message)
+        await update.message.reply_text("❌ Error adding service.")
 
 async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
+    if not is_admin(update.effective_user.id): return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Usage: /add_channel <id> <link>")
         return
-
     try:
-        # Expected format: /add_channel -100123456789 https://t.me/+AbCdEfGh
-        args = context.args
-        if len(args) < 2:
-            await update.message.reply_text("Usage: /add_channel <chat_id> <invite_link>")
-            return
-
-        chat_id = args[0]
-        # Joining the rest as link in case it has spaces (though unlikely for links)
-        invite_link = args[1]
-
+        chat_id, link = args[0], args[1]
         conn = get_db_connection()
-        c = conn.cursor()
-        # Check if exists
-        curr = c.execute('SELECT * FROM channels WHERE chat_id = ?', (chat_id,)).fetchone()
-        if curr:
-            await update.message.reply_text("⚠️ Channel already exists.")
-            conn.close()
-            return
-
-        c.execute('INSERT INTO channels (chat_id, invite_link) VALUES (?, ?)', (chat_id, invite_link))
+        conn.execute('INSERT INTO channels (chat_id, invite_link) VALUES (?, ?)', (chat_id, link))
         conn.commit()
         conn.close()
-
-        await update.message.reply_text(f"✅ Channel {chat_id} added successfully!")
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        await update.message.reply_text("❌ An error occurred.")
+        await update.message.reply_text(f"✅ Channel {chat_id} added!")
+    except:
+        await update.message.reply_text("❌ Error adding channel.")
 
 async def del_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
+    if not is_admin(update.effective_user.id): return
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("Usage: /del_channel <id>")
         return
-
     try:
-        args = context.args
-        if len(args) < 1:
-            await update.message.reply_text("Usage: /del_channel <chat_id>")
-            return
-
         chat_id = args[0]
-
         conn = get_db_connection()
-        c = conn.cursor()
-        c.execute('DELETE FROM channels WHERE chat_id = ?', (chat_id,))
-        rows = c.rowcount
+        conn.execute('DELETE FROM channels WHERE chat_id = ?', (chat_id,))
         conn.commit()
         conn.close()
+        await update.message.reply_text(f"✅ Channel {chat_id} deleted!")
+    except:
+        await update.message.reply_text("❌ Error deleting channel.")
 
-        if rows > 0:
-            await update.message.reply_text(f"✅ Channel {chat_id} removed.")
-        else:
-            await update.message.reply_text(f"⚠️ Channel {chat_id} not found.")
-
-    except Exception as e:
-        await update.message.reply_text("❌ An error occurred.")
+# Fallback for list commands if user types them manually, redirect to text response
+async def list_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Reuse button logic or just simple text
+    await update.message.reply_text("Please use the dashboard buttons.")
 
 async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not ADMIN_ID or update.effective_user.id != int(ADMIN_ID):
-        return
-
-    conn = get_db_connection()
-    channels = conn.execute('SELECT * FROM channels').fetchall()
-    conn.close()
-
-    if not channels:
-        await update.message.reply_text("📭 No channels configured.")
-        return
-
-    msg = "📢 **Required Channels:**\n\n"
-    for ch in channels:
-        msg += f"ID: `{ch['chat_id']}`\nLink: {ch['invite_link']}\n\n"
-    
-    await update.message.reply_text(msg, parse_mode='Markdown')
+    await update.message.reply_text("Please use the dashboard buttons.")
 
 if __name__ == '__main__':
-    # Main.py handles the real execution, this is for local testing fallback
-    if not ADMIN_BOT_TOKEN:
-        print("Error: ADMIN_BOT_TOKEN not set.")
-        exit(1)
-        
+    if not ADMIN_BOT_TOKEN: exit(1)
     application = ApplicationBuilder().token(ADMIN_BOT_TOKEN).build()
     
-    start_handler = CommandHandler('start', start)
-    add_service_handler = CommandHandler('add_service', add_service)
-    orders_handler = CommandHandler('orders', list_orders)
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CallbackQueryHandler(button_handler))
     
-    # Channel handlers
-    add_channel_handler = CommandHandler('add_channel', add_channel)
-    del_channel_handler = CommandHandler('del_channel', del_channel)
-    list_channels_handler = CommandHandler('channels', list_channels)
-
-    application.add_handler(start_handler)
-    application.add_handler(add_service_handler)
-    application.add_handler(orders_handler)
+    application.add_handler(CommandHandler('add_service', add_service))
+    application.add_handler(CommandHandler('add_channel', add_channel))
+    application.add_handler(CommandHandler('del_channel', del_channel))
     
-    application.add_handler(add_channel_handler)
-    application.add_handler(del_channel_handler)
-    application.add_handler(list_channels_handler)
-    
-    print("Admin Bot is running...")
+    print("Admin Bot Running...")
     application.run_polling()
