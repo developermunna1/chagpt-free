@@ -3,7 +3,7 @@ import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
 from config import USER_BOT_TOKEN, ADMIN_BOT_TOKEN, WEB_APP_URL, ADMIN_ID
 from user_bot import start as user_start, btn_handler as user_btn_handler, post_init as user_post_init
-from admin_bot import start as admin_start, add_service, list_orders, add_channel, del_channel, list_channels
+from admin_bot import start as admin_start, add_service, list_orders, add_channel, del_channel, list_channels, button_handler, broadcast
 from database import init_db
 import traceback
 
@@ -32,6 +32,8 @@ async def main():
     admin_app.add_handler(CommandHandler('add_channel', add_channel))
     admin_app.add_handler(CommandHandler('del_channel', del_channel))
     admin_app.add_handler(CommandHandler('channels', list_channels))
+    admin_app.add_handler(CommandHandler('broadcast', broadcast))
+    admin_app.add_handler(CallbackQueryHandler(button_handler))
 
     # 4. Run both bots concurrently
     logger.info("Starting bots...")
